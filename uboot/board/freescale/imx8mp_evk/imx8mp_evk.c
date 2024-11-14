@@ -33,6 +33,12 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+struct gs_gpio_info {
+	iomux_v3_cfg_t pad;
+	int gpio_num;
+};
+
+
 #define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
 #define WDOG_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
 
@@ -43,6 +49,42 @@ static iomux_v3_cfg_t const uart_pads[] = {
 
 static iomux_v3_cfg_t const wdog_pads[] = {
 	MX8MP_PAD_GPIO1_IO02__WDOG1_WDOG_B  | MUX_PAD_CTRL(WDOG_PAD_CTRL),
+};
+
+struct gs_gpio_info const gs_gpio_info_list[] = {
+	{MX8MP_PAD_ECSPI1_SS0__GPIO5_IO09	, IMX_GPIO_NR(5, 9) },
+	{MX8MP_PAD_ECSPI1_MOSI__GPIO5_IO07	, IMX_GPIO_NR(5, 7) },
+	{MX8MP_PAD_ECSPI1_MISO__GPIO5_IO08	, IMX_GPIO_NR(5, 8) },
+	{MX8MP_PAD_ECSPI1_SCLK__GPIO5_IO06	, IMX_GPIO_NR(5, 6) },
+	{MX8MP_PAD_ECSPI2_SS0__GPIO5_IO13	, IMX_GPIO_NR(5, 13)},
+	{MX8MP_PAD_ECSPI2_MOSI__GPIO5_IO11	, IMX_GPIO_NR(5, 11)},
+	{MX8MP_PAD_ECSPI2_MISO__GPIO5_IO12	, IMX_GPIO_NR(5, 12)},
+	{MX8MP_PAD_ECSPI2_SCLK__GPIO5_IO10	, IMX_GPIO_NR(5, 10)},
+	{MX8MP_PAD_GPIO1_IO13__GPIO1_IO13	, IMX_GPIO_NR(1, 13)},
+	{MX8MP_PAD_GPIO1_IO00__GPIO1_IO00	, IMX_GPIO_NR(1, 0) },
+	{MX8MP_PAD_GPIO1_IO07__GPIO1_IO07	, IMX_GPIO_NR(1, 7) },
+	{MX8MP_PAD_GPIO1_IO12__GPIO1_IO12	, IMX_GPIO_NR(1, 12)},
+	{MX8MP_PAD_GPIO1_IO15__GPIO1_IO15	, IMX_GPIO_NR(1, 15)},
+	{MX8MP_PAD_GPIO1_IO14__GPIO1_IO14	, IMX_GPIO_NR(1, 14)},
+	{MX8MP_PAD_GPIO1_IO05__GPIO1_IO05	, IMX_GPIO_NR(1, 5)},
+};
+
+static iomux_v3_cfg_t const GPIO_pads[] = {
+	gs_gpio_info_list[0].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[1].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[2].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[3].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[4].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[5].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[6].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[7].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[8].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[9].pad  | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[10].pad | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[11].pad | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[12].pad | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[13].pad | MUX_PAD_CTRL(NO_PAD_CTRL),
+	gs_gpio_info_list[14].pad | MUX_PAD_CTRL(NO_PAD_CTRL),
 };
 
 #ifdef CONFIG_NAND_MXS
@@ -70,6 +112,18 @@ struct efi_capsule_update_info update_info = {
 u8 num_image_type_guids = ARRAY_SIZE(fw_images);
 #endif /* EFI_HAVE_CAPSULE_SUPPORT */
 
+int gs_gpio_init(void)
+{
+	int i = 0;
+	imx_iomux_v3_setup_multiple_pads(GPIO_pads, ARRAY_SIZE(GPIO_pads));
+	for(i = 0; i < ARRAY_SIZE(gs_gpio_info_list)/sizeof(struct gs_gpio_info); i++)
+	{
+		gpio_request(gs_gpio_info_list[i].gpio_num, "gpio");
+		gpio_direction_input(gs_gpio_info_list[i].gpio_num);
+	}
+	return 0;
+}
+
 int board_early_init_f(void)
 {
 	struct wdog_regs *wdog = (struct wdog_regs *)WDOG1_BASE_ADDR;
@@ -80,7 +134,10 @@ int board_early_init_f(void)
 
 	imx_iomux_v3_setup_multiple_pads(uart_pads, ARRAY_SIZE(uart_pads));
 
+
 	init_uart_clk(1);
+
+	gs_gpio_init();
 
 	return 0;
 }

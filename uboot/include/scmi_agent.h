@@ -13,6 +13,7 @@
 #include <asm/types.h>
 
 struct udevice;
+struct scmi_channel;
 
 /*
  * struct scmi_msg - Context of a SCMI message sent and the response received
@@ -44,6 +45,26 @@ struct scmi_msg {
 		.out_msg_sz = sizeof(_out_array),	\
 	}
 
+/* Helper macro to match a message on output array references */
+#define SCMI_MSG(_protocol, _message, _out_array)	\
+	(struct scmi_msg){				\
+		.protocol_id = (_protocol),		\
+		.message_id = (_message),		\
+		.in_msg = (uint8_t *)NULL,		\
+		.in_msg_sz = 0,				\
+		.out_msg = (uint8_t *)&(_out_array),	\
+		.out_msg_sz = sizeof(_out_array),	\
+	}
+
+/**
+ * devm_scmi_of_get_channel() - Get SCMI channel handle from SCMI agent DT node
+ *
+ * @dev:	Device requesting a channel
+ * @channel:	Output reference to the SCMI channel upon success
+ * @return 0 on success and a negative errno on failure
+ */
+int devm_scmi_of_get_channel(struct udevice *dev, struct scmi_channel **channel);
+
 /**
  * devm_scmi_process_msg() - Send and process an SCMI message
  *
@@ -51,11 +72,13 @@ struct scmi_msg {
  * Caller sets scmi_msg::out_msg_sz to the output message buffer size.
  * On return, scmi_msg::out_msg_sz stores the response payload size.
  *
- * @dev:	SCMI agent device
+ * @dev:	SCMI device
+ * @channel:	Communication channel for the device
  * @msg:	Message structure reference
  * Return: 0 on success and a negative errno on failure
  */
-int devm_scmi_process_msg(struct udevice *dev, struct scmi_msg *msg);
+int devm_scmi_process_msg(struct udevice *dev, struct scmi_channel *channel,
+			  struct scmi_msg *msg);
 
 /**
  * scmi_to_linux_errno() - Convert an SCMI error code into a Linux errno code

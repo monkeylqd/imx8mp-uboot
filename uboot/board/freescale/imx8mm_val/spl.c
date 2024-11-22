@@ -127,7 +127,7 @@ int board_mmc_init(struct bd_info *bis)
 	 * mmc0                    USDHC1
 	 * mmc1                    USDHC2
 	 */
-	for (i = 0; i < CONFIG_SYS_FSL_USDHC_NUM; i++) {
+	for (i = 0; i < CFG_SYS_FSL_USDHC_NUM; i++) {
 		switch (i) {
 		case 0:
 			init_clk_usdhc(1);
@@ -198,6 +198,11 @@ int power_init_board(void)
 		printf("power init failed");
 
 	p = pmic_get("BD71837");
+	if (!p) {
+		printf("Fail to get BD71837 pmic\n");
+		return -ENODEV;
+	}
+
 	pmic_probe(p);
 
 

@@ -20,10 +20,8 @@
 #include <asm/arch/ddr.h>
 #include <asm/arch/rdc.h>
 #include <asm/arch/upower.h>
+#include <asm/mach-imx/ele_api.h>
 #include <asm/mach-imx/boot_mode.h>
-#include <asm/mach-imx/s400_api.h>
-#include <asm/arch/clock.h>
-#include <asm/arch/pcc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -31,6 +29,7 @@ void spl_dram_init(void)
 {
 	/* Reboot in dual boot setting no need to init ddr again */
 	bool ddr_enable = pcc_clock_is_enable(5, LPDDR4_PCC5_SLOT);
+
 	if (!ddr_enable) {
 		init_clk_ddr();
 		ddr_init(&dram_timing);
@@ -87,16 +86,19 @@ void setup_iomux_pmic(void)
 
 int power_init_board(void)
 {
-	if (IS_ENABLED(CONFIG_IMX8ULP_LD_MODE)) {
-		/* Set buck3 to 0.9v LD */
-		upower_pmic_i2c_write(0x22, 0x18);
-	} else if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
+	/* Set buck2 ramp-up speed 1us */
+	upower_pmic_i2c_write(0x14, 0x39);
+	/* Set buck3 ramp-up speed 1us */
+	upower_pmic_i2c_write(0x21, 0x39);
+	/* Set buck3out min limit 0.625v */
+	upower_pmic_i2c_write(0x2d, 0x2);
+
+	if (IS_ENABLED(CONFIG_IMX8ULP_ND_MODE)) {
 		/* Set buck3 to 1.0v ND */
 		upower_pmic_i2c_write(0x22, 0x20);
 	} else {
 		/* Set buck3 to 1.1v OD */
 		upower_pmic_i2c_write(0x22, 0x28);
-
 	}
 
 	return 0;
@@ -113,19 +115,19 @@ void display_ele_fw_version(void)
 	} else {
 		printf("ELE firmware version %u.%u.%u-%x",
 		       (fw_version & (0x00ff0000)) >> 16,
-		       (fw_version & (0x0000ff00)) >> 8,
-		       (fw_version & (0x000000ff)), sha1);
+		       (fw_version & (0x0000fff0)) >> 4,
+		       (fw_version & (0x0000000f)), sha1);
 		((fw_version & (0x80000000)) >> 31) == 1 ? puts("-dirty\n") : puts("\n");
 	}
 }
 
 void spl_board_init(void)
 {
-	struct udevice *dev;
 	u32 res;
 	int ret;
+	struct udevice *dev;
 
-	ret = arch_cpu_init_dm();
+	ret = imx8ulp_dm_post_init();
 	if (ret)
 		return;
 
@@ -141,9 +143,7 @@ void spl_board_init(void)
 	if (!m33_image_booted())
 		setup_iomux_pmic();
 
-	/* Load the lposc fuse to work around ROM issue,
-	 *  The fuse depends on S400 to read.
-	 */
+	/* Load the lposc fuse to work around ROM issue. The fuse depends on S400 to read. */
 	if (is_soc_rev(CHIP_REV_1_0))
 		load_lposc_fuse();
 
@@ -153,9 +153,6 @@ void spl_board_init(void)
 
 	clock_init_late();
 
-	/* DDR initialization */
-	spl_dram_init();
-
 	/* This must place after upower init, so access to MDA and MRC are valid */
 	/* Init XRDC MDA  */
 	xrdc_init_mda();
@@ -163,8 +160,21 @@ void spl_board_init(void)
 	/* Init XRDC MRC for VIDEO, DSP domains */
 	xrdc_init_mrc();
 
+	xrdc_init_pdac_msc();
+
+	/* DDR initialization */
+	spl_dram_init();
+
 	/* Call it after PS16 power up */
 	set_lpav_qos();
+
+#if defined(CONFIG_IMX8ULP_FIXED_OP_RANGE)
+	/* Set operation range for PTE/PTF */
+	set_apd_gpiox_op_range(PTE, RANGE_1P8V);
+	set_apd_gpiox_op_range(PTF, RANGE_1P8V);
+	/* disable PTD cell compensation */
+	set_apd_gpiox_comp_cell(PTD, false);
+#endif
 
 	/* Asks S400 to release CAAM for A35 core */
 	ret = ahab_release_caam(7, &res);

@@ -991,11 +991,11 @@ static int esdhc_init_common(struct fsl_esdhc_priv *priv, struct mmc *mmc)
 	ulong start;
 
 	/* Reset the entire host controller */
-	esdhc_setbits32(&regs->sysctl, SYSCTL_RSTA);
+	esdhc_setbits32(&regs->sysctl, SYSCTL_RSTA | SYSCTL_RSTT);
 
 	/* Wait until the controller is available */
 	start = get_timer(0);
-	while ((esdhc_read32(&regs->sysctl) & SYSCTL_RSTA)) {
+	while ((esdhc_read32(&regs->sysctl) & (SYSCTL_RSTA | SYSCTL_RSTT))) {
 		if (get_timer(start) > 1000)
 			return -ETIMEDOUT;
 	}
@@ -1070,16 +1070,40 @@ static int esdhc_getcd_common(struct fsl_esdhc_priv *priv)
 	return timeout > 0;
 }
 
+static int esdhc_wait_dat0_common(struct fsl_esdhc_priv *priv, int state,
+				  int timeout_us)
+{
+	struct fsl_esdhc *regs = priv->esdhc_regs;
+	int ret, err;
+	u32 tmp;
+
+	/* make sure the card clock keep on */
+	esdhc_setbits32(&regs->vendorspec, VENDORSPEC_FRC_SDCLK_ON);
+
+	ret = readx_poll_timeout(esdhc_read32, &regs->prsstat, tmp,
+				!!(tmp & PRSSTAT_DAT0) == !!state,
+				timeout_us);
+
+	/* change to default setting, let host control the card clock */
+	esdhc_clrbits32(&regs->vendorspec, VENDORSPEC_FRC_SDCLK_ON);
+
+	err = readx_poll_timeout(esdhc_read32, &regs->prsstat, tmp, tmp & PRSSTAT_SDOFF, 100);
+	if (err)
+		pr_warn("card clock not gate off as expect.\n");
+
+	return ret;
+}
+
 static int esdhc_reset(struct fsl_esdhc *regs)
 {
 	ulong start;
 
 	/* reset the controller */
-	esdhc_setbits32(&regs->sysctl, SYSCTL_RSTA);
+	esdhc_setbits32(&regs->sysctl, SYSCTL_RSTA | SYSCTL_RSTT);
 
 	/* hardware clears the bit when it is done */
 	start = get_timer(0);
-	while ((esdhc_read32(&regs->sysctl) & SYSCTL_RSTA)) {
+	while ((esdhc_read32(&regs->sysctl) & (SYSCTL_RSTA | SYSCTL_RSTT))) {
 		if (get_timer(start) > 100) {
 			printf("MMC/SD: Reset never completed.\n");
 			return -ETIMEDOUT;
@@ -1119,11 +1143,19 @@ static int esdhc_set_ios(struct mmc *mmc)
 	return esdhc_set_ios_common(priv, mmc);
 }
 
+static int esdhc_wait_dat0(struct mmc *mmc, int state, int timeout_us)
+{
+	struct fsl_esdhc_priv *priv = mmc->priv;
+
+	return esdhc_wait_dat0_common(priv, state, timeout_us);
+}
+
 static const struct mmc_ops esdhc_ops = {
 	.getcd		= esdhc_getcd,
 	.init		= esdhc_init,
 	.send_cmd	= esdhc_send_cmd,
 	.set_ios	= esdhc_set_ios,
+	.wait_dat0	= esdhc_wait_dat0,
 };
 #endif
 
@@ -1166,8 +1198,6 @@ static int fsl_esdhc_init(struct fsl_esdhc_priv *priv,
 
 	esdhc_write32(&regs->irqstaten, SDHCI_IRQ_EN_BITS);
 	cfg = &plat->cfg;
-	if (!CONFIG_IS_ENABLED(DM_MMC))
-		memset(cfg, '\0', sizeof(*cfg));
 
 	caps = esdhc_read32(&regs->hostcapblt);
 
@@ -1338,7 +1368,7 @@ int fsl_esdhc_mmc_init(struct bd_info *bis)
 	struct fsl_esdhc_cfg *cfg;
 
 	cfg = calloc(sizeof(struct fsl_esdhc_cfg), 1);
-	cfg->esdhc_base = CONFIG_SYS_FSL_ESDHC_ADDR;
+	cfg->esdhc_base = CFG_SYS_FSL_ESDHC_ADDR;
 	cfg->sdhc_clk = gd->arch.sdhc_clk;
 	return fsl_esdhc_initialize(bis, cfg);
 }
@@ -1347,7 +1377,7 @@ int fsl_esdhc_mmc_init(struct bd_info *bis)
 #if CONFIG_IS_ENABLED(OF_LIBFDT)
 __weak int esdhc_status_fixup(void *blob, const char *compat)
 {
-	if (IS_ENABLED(FSL_ESDHC_PIN_MUX) && !hwconfig("esdhc")) {
+	if (IS_ENABLED(CONFIG_FSL_ESDHC_PIN_MUX) && !hwconfig("esdhc")) {
 		do_fixup_by_compat(blob, compat, "status", "disabled",
 				sizeof("disabled"), 1);
 		return 1;
@@ -1621,25 +1651,9 @@ static int __maybe_unused fsl_esdhc_set_enhanced_strobe(struct udevice *dev)
 static int fsl_esdhc_wait_dat0(struct udevice *dev, int state,
 				int timeout_us)
 {
-	int ret, err;
-	u32 tmp;
 	struct fsl_esdhc_priv *priv = dev_get_priv(dev);
-	struct fsl_esdhc *regs = priv->esdhc_regs;
 
-	/* make sure the card clock keep on */
-	esdhc_setbits32(&regs->vendorspec, VENDORSPEC_FRC_SDCLK_ON);
-
-	ret = readx_poll_timeout(esdhc_read32, &regs->prsstat, tmp,
-				!!(tmp & PRSSTAT_DAT0) == !!state,
-				timeout_us);
-
-	/* change to default setting, let host control the card clock */
-	esdhc_clrbits32(&regs->vendorspec, VENDORSPEC_FRC_SDCLK_ON);
-	err = readx_poll_timeout(esdhc_read32, &regs->prsstat, tmp, tmp & PRSSTAT_SDOFF, 100);
-	if (err)
-		dev_warn(dev, "card clock not gate off as expect.\n");
-
-	return ret;
+	return esdhc_wait_dat0_common(priv, state, timeout_us);
 }
 
 static int fsl_esdhc_reinit(struct udevice *dev)
@@ -1694,6 +1708,7 @@ static const struct udevice_id fsl_esdhc_ids[] = {
 	{ .compatible = "fsl,imx8qm-usdhc", .data = (ulong)&usdhc_imx8qm_data,},
 	{ .compatible = "fsl,imx8mm-usdhc", .data = (ulong)&usdhc_imx8qm_data,},
 	{ .compatible = "fsl,imx8mn-usdhc", .data = (ulong)&usdhc_imx8qm_data,},
+	{ .compatible = "fsl,imx8mp-usdhc", .data = (ulong)&usdhc_imx8qm_data,},
 	{ .compatible = "fsl,imx8mq-usdhc", .data = (ulong)&usdhc_imx8qm_data,},
 	{ .compatible = "fsl,imxrt-usdhc", },
 	{ .compatible = "fsl,esdhc", },

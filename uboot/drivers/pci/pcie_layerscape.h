@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
- * Copyright 2017-2020, 2023 NXP
+ * Copyright 2017-2020 NXP
  * Copyright 2014-2015 Freescale Semiconductor, Inc.
  * Layerscape PCIe driver
  */
@@ -13,20 +13,20 @@
 #include <asm/arch-fsl-layerscape/svr.h>
 #include <asm/arch-ls102xa/svr.h>
 
-#ifndef CONFIG_SYS_PCI_MEMORY_BUS
-#define CONFIG_SYS_PCI_MEMORY_BUS CONFIG_SYS_SDRAM_BASE
+#ifndef CFG_SYS_PCI_MEMORY_BUS
+#define CFG_SYS_PCI_MEMORY_BUS CFG_SYS_SDRAM_BASE
 #endif
 
-#ifndef CONFIG_SYS_PCI_MEMORY_PHYS
-#define CONFIG_SYS_PCI_MEMORY_PHYS CONFIG_SYS_SDRAM_BASE
+#ifndef CFG_SYS_PCI_MEMORY_PHYS
+#define CFG_SYS_PCI_MEMORY_PHYS CFG_SYS_SDRAM_BASE
 #endif
 
-#ifndef CONFIG_SYS_PCI_MEMORY_SIZE
-#define CONFIG_SYS_PCI_MEMORY_SIZE SZ_4G
+#ifndef CFG_SYS_PCI_MEMORY_SIZE
+#define CFG_SYS_PCI_MEMORY_SIZE SZ_4G
 #endif
 
-#ifndef CONFIG_SYS_PCI_EP_MEMORY_BASE
-#define CONFIG_SYS_PCI_EP_MEMORY_BASE CONFIG_SYS_LOAD_ADDR
+#ifndef CFG_SYS_PCI_EP_MEMORY_BASE
+#define CFG_SYS_PCI_EP_MEMORY_BASE CONFIG_SYS_LOAD_ADDR
 #endif
 
 #define PCIE_PHYS_SIZE			0x200000000
@@ -136,8 +136,6 @@
 
 /* layerscape PF1 offset */
 #define LS_PCIE_PF1_OFFSET	0x20000
-
-#define PCI_LS_DRV_NAME			"pci_layerscape"
 
 struct ls_pcie {
 	void __iomem *dbi;

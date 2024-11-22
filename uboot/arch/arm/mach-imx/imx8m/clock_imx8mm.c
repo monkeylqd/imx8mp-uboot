@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018-2019, 2023 NXP
+ * Copyright 2018-2019 NXP
  *
  * Peng Fan <peng.fan@nxp.com>
  */
@@ -38,17 +38,24 @@ void enable_ocotp_clk(unsigned char enable)
 
 int enable_i2c_clk(unsigned char enable, unsigned i2c_num)
 {
-	/* 0 - 3 is valid i2c num */
-	if (i2c_num > 3)
+	u8 i2c_ccgr[6] = {
+			CCGR_I2C1, CCGR_I2C2, CCGR_I2C3, CCGR_I2C4,
+#if (IS_ENABLED(CONFIG_IMX8MP))
+			CCGR_I2C5_8MP, CCGR_I2C6_8MP
+#endif
+	};
+
+	if (i2c_num >= ARRAY_SIZE(i2c_ccgr))
 		return -EINVAL;
 
-	clock_enable(CCGR_I2C1 + i2c_num, !!enable);
+	clock_enable(i2c_ccgr[i2c_num], !!enable);
 
 	return 0;
 }
 
 static struct imx_int_pll_rate_table imx8mm_fracpll_tbl[] = {
 	PLL_1443X_RATE(1000000000U, 250, 3, 1, 0),
+	PLL_1443X_RATE(933000000U, 311, 4, 1, 0),
 	PLL_1443X_RATE(800000000U, 200, 3, 1, 0),
 	PLL_1443X_RATE(750000000U, 250, 2, 2, 0),
 	PLL_1443X_RATE(650000000U, 325, 3, 2, 0),
@@ -541,11 +548,11 @@ int clock_init(void)
 		INTPLL_DIV20_CLKE_MASK;
 	writel(val_cfg0, &ana_pll->sys_pll2_gnrl_ctl);
 
-	/* Configure ARM at 1.8GHz */
+	/* Configure ARM at 1.2GHz */
 	clock_set_target_val(ARM_A53_CLK_ROOT, CLK_ROOT_ON |
 			     CLK_ROOT_SOURCE_SEL(2));
 
-	intpll_configure(ANATOP_ARM_PLL, MHZ(1800));
+	intpll_configure(ANATOP_ARM_PLL, MHZ(1200));
 
 	/* Bypass CCM A53 ROOT, Switch to ARM PLL -> MUX-> CPU */
 	clock_set_target_val(CORE_SEL_CFG, CLK_ROOT_SOURCE_SEL(1));

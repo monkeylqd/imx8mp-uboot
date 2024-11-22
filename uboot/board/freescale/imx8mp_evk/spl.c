@@ -63,14 +63,8 @@ void spl_dram_init(void)
 
 void spl_board_init(void)
 {
-	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
-		struct udevice *dev;
-		int ret;
+	arch_misc_init();
 
-		ret = uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(caam_jr), &dev);
-		if (ret)
-			printf("Failed to initialize caam_jr: %d\n", ret);
-	}
 	/*
 	 * Set GIC clock to 500Mhz for OD VDD_SOC. Kernel driver does
 	 * not allow to change it. Should set the clock after PMIC
@@ -92,7 +86,7 @@ int power_init_board(void)
 	struct udevice *dev;
 	int ret;
 
-	ret = pmic_get("pca9450@25", &dev);
+	ret = pmic_get("pmic@25", &dev);
 	if (ret == -ENODEV) {
 		puts("No pca9450@25\n");
 		return 0;
@@ -130,9 +124,6 @@ int power_init_board(void)
 	pmic_reg_write(dev, PCA9450_BUCK6OUT, 0x18);
 #endif
 
-	/* set WDOG_B_CFG to cold reset */
-	pmic_reg_write(dev, PCA9450_RESET_CTRL, 0xA1);
-
 	return 0;
 }
 #endif
@@ -161,8 +152,6 @@ void board_init_f(ulong dummy)
 
 	timer_init();
 
-	preloader_console_init();
-
 	ret = spl_early_init();
 	if (ret) {
 		debug("spl_early_init() failed: %d\n", ret);
@@ -177,17 +166,14 @@ void board_init_f(ulong dummy)
 		hang();
 	}
 
+	preloader_console_init();
+
 	enable_tzc380();
 
 	power_init_board();
 
 	/* DDR initialization */
 	spl_dram_init();
-
-	/* SOM-TLIMX8MP led1: gpio3_16 */
-	imx_iomux_v3_setup_pad(MX8MP_PAD_NAND_READY_B__GPIO3_IO16 | MUX_PAD_CTRL(PAD_CTL_HYS | PAD_CTL_DSE1));
-	gpio_request(IMX_GPIO_NR(3, 16), "led1");
-	gpio_direction_output(IMX_GPIO_NR(3, 16), 1);
 
 	board_init_r(NULL, 0);
 }

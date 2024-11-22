@@ -5,6 +5,7 @@
 
 #include <common.h>
 #include <env.h>
+#include <efi_loader.h>
 #include <init.h>
 #include <miiphy.h>
 #include <netdev.h>
@@ -30,6 +31,27 @@ static iomux_v3_cfg_t const uart_pads[] = {
 	MX93_PAD_UART1_RXD__LPUART1_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
 	MX93_PAD_UART1_TXD__LPUART1_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
 };
+
+#if CONFIG_IS_ENABLED(EFI_HAVE_CAPSULE_SUPPORT)
+#define IMX_BOOT_IMAGE_GUID \
+	EFI_GUID(0xbc550d86, 0xda26, 0x4b70, 0xac, 0x05, \
+		 0x2a, 0x44, 0x8e, 0xda, 0x6f, 0x21)
+
+struct efi_fw_image fw_images[] = {
+	{
+		.image_type_id = IMX_BOOT_IMAGE_GUID,
+		.fw_name = u"IMX93-11X11-EVK-RAW",
+		.image_index = 1,
+	},
+};
+
+struct efi_capsule_update_info update_info = {
+	.dfu_string = "mmc 0=flash-bin raw 0 0x2000 mmcpart 1",
+	.images = fw_images,
+};
+
+u8 num_image_type_guids = ARRAY_SIZE(fw_images);
+#endif /* EFI_HAVE_CAPSULE_SUPPORT */
 
 int board_early_init_f(void)
 {
@@ -244,12 +266,16 @@ static int setup_eqos(void)
 	struct blk_ctrl_wakeupmix_regs *bctrl =
 		(struct blk_ctrl_wakeupmix_regs *)BLK_CTRL_WAKEUPMIX_BASE_ADDR;
 
-	/* set INTF as RGMII, enable RGMII TXC clock */
-	clrsetbits_le32(&bctrl->eqos_gpr,
-			BCTRL_GPR_ENET_QOS_INTF_MODE_MASK,
-			BCTRL_GPR_ENET_QOS_INTF_SEL_RGMII | BCTRL_GPR_ENET_QOS_CLK_GEN_EN);
+	if (!IS_ENABLED(CONFIG_TARGET_IMX93_14X14_EVK)) {
+		/* set INTF as RGMII, enable RGMII TXC clock */
+		clrsetbits_le32(&bctrl->eqos_gpr,
+				BCTRL_GPR_ENET_QOS_INTF_MODE_MASK,
+				BCTRL_GPR_ENET_QOS_INTF_SEL_RGMII | BCTRL_GPR_ENET_QOS_CLK_GEN_EN);
 
-	return set_clk_eqos(ENET_125MHZ);
+		return set_clk_eqos(ENET_125MHZ);
+	}
+
+	return 0;
 }
 
 static void board_gpio_init(void)
@@ -280,6 +306,20 @@ static void board_gpio_init(void)
 
 	dm_gpio_set_dir_flags(&desc, GPIOD_IS_OUT);
 	dm_gpio_set_value(&desc, 1);
+
+	if (IS_ENABLED(CONFIG_TARGET_IMX93_14X14_EVK)) {
+		/* Enable I2C_LS_EN levelshift */
+		ret = dm_gpio_lookup_name("gpio@20_16", &desc);
+		if (ret)
+			return;
+
+		ret = dm_gpio_request(&desc, "I2C_LS_EN");
+		if (ret)
+			return;
+
+		dm_gpio_set_dir_flags(&desc, GPIOD_IS_OUT);
+		dm_gpio_set_value(&desc, 1);
+	}
 }
 
 int board_init(void)
@@ -288,10 +328,10 @@ int board_init(void)
 	setup_typec();
 #endif
 
-	if (CONFIG_IS_ENABLED(FEC_MXC))
+	if (IS_ENABLED(CONFIG_FEC_MXC))
 		setup_fec();
 
-	if (CONFIG_IS_ENABLED(DWC_ETH_QOS))
+	if (IS_ENABLED(CONFIG_DWC_ETH_QOS))
 		setup_eqos();
 
 	board_gpio_init();
@@ -317,3 +357,11 @@ int board_late_init(void)
 	return 0;
 }
 
+#ifdef CONFIG_FSL_FASTBOOT
+#ifdef CONFIG_ANDROID_RECOVERY
+int is_recovery_key_pressing(void)
+{
+	return 0;
+}
+#endif /*CONFIG_ANDROID_RECOVERY*/
+#endif /*CONFIG_FSL_FASTBOOT*/

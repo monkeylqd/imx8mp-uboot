@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2019-2023 NXP
+ * Copyright 2019-2022 NXP
  */
 
 #include <common.h>
+#include <display_options.h>
 #include <init.h>
 #include <malloc.h>
 #include <errno.h>
@@ -81,7 +82,7 @@ int board_init(void)
 	pci_init();
 #endif
 
-#if defined(CONFIG_TARGET_LS1028ARDB) || defined(CONFIG_TARGET_LS1028ATSN)
+#if defined(CONFIG_TARGET_LS1028ARDB)
 	u8 val = I2C_MUX_CH_DEFAULT;
 
 #if !CONFIG_IS_ENABLED(DM_I2C)
@@ -94,7 +95,7 @@ int board_init(void)
 #endif
 #endif
 
-#if defined(CONFIG_TARGET_LS1028ARDB) || defined(CONFIG_TARGET_LS1028ATSN)
+#if defined(CONFIG_TARGET_LS1028ARDB)
 	u8 reg;
 
 	reg = QIXIS_READ(brdcfg[4]);
@@ -311,14 +312,14 @@ int checkboard(void)
 	puts("SERDES1 Reference : ");
 
 	sw = QIXIS_READ(brdcfg[2]);
-#if defined(CONFIG_TARGET_LS1028ARDB) || defined(CONFIG_TARGET_LS1028ATSN)
+#ifdef CONFIG_TARGET_LS1028ARDB
 	clock = (sw >> 6) & 3;
 #else
 	clock = (sw >> 4) & 0xf;
 #endif
 
 	printf("Clock1 = %sMHz ", freq[clock]);
-#if defined(CONFIG_TARGET_LS1028ARDB) || defined(CONFIG_TARGET_LS1028ATSN)
+#ifdef CONFIG_TARGET_LS1028ARDB
 	clock = (sw >> 4) & 3;
 #else
 	clock = sw & 0xf;

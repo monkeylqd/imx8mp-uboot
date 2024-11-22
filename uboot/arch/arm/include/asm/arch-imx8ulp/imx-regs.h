@@ -10,6 +10,8 @@
 #include <linux/bitops.h>
 #include <linux/sizes.h>
 
+#define SRAM0_BASE          0x22010000
+
 #define CAAM_ARB_BASE_ADDR      0x26000000
 
 #define PBRIDGE0_BASE		0x28000000
@@ -62,8 +64,7 @@
 #define AVD_SIM_LPDDR_CTRL	(AVD_SIM_BASE_ADDR + 0x14)
 #define AVD_SIM_LPDDR_CTRL2	(AVD_SIM_BASE_ADDR + 0x18)
 
-#define CONFIG_SYS_FSL_SEC_ADDR	0x292e0000
-#define CONFIG_SYS_FSL_MAX_NUM_OF_SEC	1
+#define CFG_SYS_FSL_SEC_ADDR	0x292e0000
 
 #define FEC_QUIRK_ENET_MAC
 
@@ -225,6 +226,18 @@ struct adc_regs {
 	u32	cv4;		/* 0x20c */
 	u32	reserved6[60];	/* 0x210 */
 	u32	resfifo0;	/* 0x300 */
+};
+
+enum apd_dgo_gpiox_op_range {
+	RANGE_AUTO = 0,
+	RANGE_1P8V,
+	RANGE_3V3V,
+};
+
+enum apd_dgo_gpiox_port {
+	PTE = 0,
+	PTF,
+	PTD,
 };
 
 #include <stdbool.h>

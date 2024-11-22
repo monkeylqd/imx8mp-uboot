@@ -16,13 +16,13 @@
 &gpmi {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
-	status = "disable";
+	status = "okay";
 	nand-on-flash-bbt;
 	fsl,use-minimum-ecc;
 };
 
 &usdhc3 {
-	status = "okay";
+	status = "disabled";
 };
 
 &iomuxc {

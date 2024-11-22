@@ -9,8 +9,14 @@
 #include <log.h>
 #include <spl.h>
 #include <asm/mach-imx/image.h>
+#include <u-boot/lz4.h>
 #ifdef CONFIG_AHAB_BOOT
 #include <asm/mach-imx/ahab.h>
+#endif
+#ifdef CONFIG_IMX_TRUSTY_OS
+#define TEE_DEST_SIZE   0x04000000
+#define LZ4_MAGIC_NUM	0x184D2204
+#define LZ4_OFFSET	0x00800000
 #endif
 
 static struct boot_img_t *read_auth_image(struct spl_image_info *spl_image,
@@ -55,6 +61,27 @@ static struct boot_img_t *read_auth_image(struct spl_image_info *spl_image,
 		return NULL;
 #endif
 
+#ifdef CONFIG_IMX_TRUSTY_OS
+	size_t dest_size = TEE_DEST_SIZE;
+
+	if (IS_ENABLED(CONFIG_SPL_LZ4)) {
+                u32 *lz4_magic_num = (void *)images[image_index].entry;
+
+                if (*lz4_magic_num == LZ4_MAGIC_NUM)
+		{
+			memcpy((void *)(images[image_index].entry + LZ4_OFFSET),
+					(void *)images[image_index].entry, images[image_index].size);
+			if (ulz4fn((void *)(images[image_index].entry+ LZ4_OFFSET), images[image_index].size,
+					(void *)images[image_index].entry, &dest_size))
+			{
+				printf("Decompress image fail!\n");
+				return NULL;
+			}
+			images[image_index].size = dest_size;
+		}
+	}
+#endif
+
 	return &images[image_index];
 }
 
@@ -62,6 +89,7 @@ static int read_auth_container(struct spl_image_info *spl_image,
 			       struct spl_load_info *info, ulong sector)
 {
 	struct container_hdr *container = NULL;
+	struct container_hdr *authhdr;
 	u16 length;
 	u32 sectors;
 	int i, size, ret = 0;
@@ -117,15 +145,17 @@ static int read_auth_container(struct spl_image_info *spl_image,
 		}
 	}
 
+	authhdr = container;
+
 #ifdef CONFIG_AHAB_BOOT
-	ret = ahab_auth_cntr_hdr(container, length);
-	if (ret)
+	authhdr = ahab_auth_cntr_hdr(authhdr, length);
+	if (!authhdr)
 		goto end_auth;
 #endif
 
-	for (i = 0; i < container->num_images; i++) {
+	for (i = 0; i < authhdr->num_images; i++) {
 		struct boot_img_t *image = read_auth_image(spl_image, info,
-							   container, i,
+							   authhdr, i,
 							   sector);
 
 		if (!image) {
@@ -141,7 +171,7 @@ static int read_auth_container(struct spl_image_info *spl_image,
 
 #if defined(CONFIG_SPL_BUILD) && defined(CONFIG_IMX_TRUSTY_OS)
 	/* Everything checks out, get the sw_version now. */
-	spl_image->rbindex = (uint64_t)container->sw_version;
+	spl_image->rbindex = (uint64_t)authhdr->sw_version;
 #endif
 
 

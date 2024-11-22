@@ -21,7 +21,7 @@
 #include <asm/arch/rdc.h>
 #include <asm/arch/upower.h>
 #include <asm/mach-imx/boot_mode.h>
-#include <asm/mach-imx/s400_api.h>
+#include <asm/mach-imx/ele_api.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/pcc.h>
 
@@ -113,19 +113,19 @@ void display_ele_fw_version(void)
 	} else {
 		printf("ELE firmware version %u.%u.%u-%x",
 		       (fw_version & (0x00ff0000)) >> 16,
-		       (fw_version & (0x0000ff00)) >> 8,
-		       (fw_version & (0x000000ff)), sha1);
+		       (fw_version & (0x0000fff0)) >> 4,
+		       (fw_version & (0x0000000f)), sha1);
 		((fw_version & (0x80000000)) >> 31) == 1 ? puts("-dirty\n") : puts("\n");
 	}
 }
 
 void spl_board_init(void)
 {
-	struct udevice *dev;
 	u32 res;
 	int ret;
+	struct udevice *dev;
 
-	ret = arch_cpu_init_dm();
+	ret = imx8ulp_dm_post_init();
 	if (ret)
 		return;
 

@@ -18,23 +18,25 @@
  * struct error_code - Helper structure for SCMI error code conversion
  * @scmi:	SCMI error code
  * @errno:	Related standard error number
+ * @string:	Name the scmi error code
  */
 struct error_code {
 	int scmi;
 	int errno;
+	char *string;
 };
 
 static const struct error_code scmi_linux_errmap[] = {
-	{ .scmi = SCMI_NOT_SUPPORTED, .errno = -EOPNOTSUPP, },
-	{ .scmi = SCMI_INVALID_PARAMETERS, .errno = -EINVAL, },
-	{ .scmi = SCMI_DENIED, .errno = -EACCES, },
-	{ .scmi = SCMI_NOT_FOUND, .errno = -ENOENT, },
-	{ .scmi = SCMI_OUT_OF_RANGE, .errno = -ERANGE, },
-	{ .scmi = SCMI_BUSY, .errno = -EBUSY, },
-	{ .scmi = SCMI_COMMS_ERROR, .errno = -ECOMM, },
-	{ .scmi = SCMI_GENERIC_ERROR, .errno = -EIO, },
-	{ .scmi = SCMI_HARDWARE_ERROR, .errno = -EREMOTEIO, },
-	{ .scmi = SCMI_PROTOCOL_ERROR, .errno = -EPROTO, },
+	{ .scmi = SCMI_NOT_SUPPORTED, .errno = -EOPNOTSUPP, .string = "SCMI_NOT_SUPPORTED" },
+	{ .scmi = SCMI_INVALID_PARAMETERS, .errno = -EINVAL, .string = "SCMI_INVALID_PARAMETERS" },
+	{ .scmi = SCMI_DENIED, .errno = -EACCES, .string = "SCMI_DENIED" },
+	{ .scmi = SCMI_NOT_FOUND, .errno = -ENOENT, .string = "SCMI_NOT_SUPPORTED" },
+	{ .scmi = SCMI_OUT_OF_RANGE, .errno = -ERANGE, .string = "SCMI_OUT_OF_RANGE" },
+	{ .scmi = SCMI_BUSY, .errno = -EBUSY, .string = "SCMI_BUSY" },
+	{ .scmi = SCMI_COMMS_ERROR, .errno = -ECOMM, .string = "SCMI_COMMS_ERROR" },
+	{ .scmi = SCMI_GENERIC_ERROR, .errno = -EIO, .string = "SCMI_GENERIC_ERROR" },
+	{ .scmi = SCMI_HARDWARE_ERROR, .errno = -EREMOTEIO, .string = "SCMI_HARDWARE_ERROR" },
+	{ .scmi = SCMI_PROTOCOL_ERROR, .errno = -EPROTO, .string = "SCMI_PROTOCOL_ERROR" },
 };
 
 int scmi_to_linux_errno(s32 scmi_code)
@@ -45,8 +47,10 @@ int scmi_to_linux_errno(s32 scmi_code)
 		return 0;
 
 	for (n = 0; n < ARRAY_SIZE(scmi_linux_errmap); n++)
-		if (scmi_code == scmi_linux_errmap[n].scmi)
-			return scmi_linux_errmap[1].errno;
+		if (scmi_code == scmi_linux_errmap[n].scmi) {
+			debug("errno: %s\n", scmi_linux_errmap[n].string);
+			return scmi_linux_errmap[n].errno;
+		}
 
 	return -EPROTO;
 }
@@ -60,17 +64,19 @@ static int scmi_bind_protocols(struct udevice *dev)
 {
 	int ret = 0;
 	ofnode node;
+	const char *name;
 
 	dev_for_each_subnode(node, dev) {
 		struct driver *drv = NULL;
 		u32 protocol_id;
 
-		if (!ofnode_is_available(node))
+		if (!ofnode_is_enabled(node))
 			continue;
 
 		if (ofnode_read_u32(node, "reg", &protocol_id))
 			continue;
 
+		name = ofnode_get_name(node);
 		switch (protocol_id) {
 		case SCMI_PROTOCOL_ID_CLOCK:
 			if (IS_ENABLED(CONFIG_CLK_SCMI))
@@ -91,12 +97,16 @@ static int scmi_bind_protocols(struct udevice *dev)
 			}
 			break;
 		case SCMI_PROTOCOL_ID_POWER_DOMAIN:
-			if (IS_ENABLED(CONFIG_POWER_DOMAIN))
+			if (IS_ENABLED(CONFIG_SCMI_POWER_DOMAIN))
 				drv = DM_DRIVER_GET(scmi_power_domain);
 			break;
 		case SCMI_PROTOCOL_ID_SENSOR:
 			if (IS_ENABLED(CONFIG_DM_THERMAL))
 				drv = DM_DRIVER_GET(scmi_thermal);
+			break;
+		case SCMI_PROTOCOL_ID_PINCTRL:
+			if (IS_ENABLED(CONFIG_PINCTRL_IMX_SCMI))
+				drv = DM_DRIVER_GET(scmi_pinctrl_imx);
 			break;
 		default:
 			break;
@@ -108,8 +118,7 @@ static int scmi_bind_protocols(struct udevice *dev)
 			continue;
 		}
 
-		ret = device_bind(dev, drv, ofnode_get_name(node), NULL, node,
-				  NULL);
+		ret = device_bind(dev, drv, name, NULL, node, NULL);
 		if (ret)
 			break;
 	}
@@ -117,17 +126,56 @@ static int scmi_bind_protocols(struct udevice *dev)
 	return ret;
 }
 
+static struct udevice *find_scmi_transport_device(struct udevice *dev)
+{
+	struct udevice *parent = dev;
+
+	do {
+		parent = dev_get_parent(parent);
+	} while (parent && device_get_uclass_id(parent) != UCLASS_SCMI_AGENT);
+
+	if (!parent)
+		dev_err(dev, "Invalid SCMI device, agent not found\n");
+
+	return parent;
+}
+
 static const struct scmi_agent_ops *transport_dev_ops(struct udevice *dev)
 {
 	return (const struct scmi_agent_ops *)dev->driver->ops;
 }
 
-int devm_scmi_process_msg(struct udevice *dev, struct scmi_msg *msg)
+int devm_scmi_of_get_channel(struct udevice *dev, struct scmi_channel **channel)
 {
-	const struct scmi_agent_ops *ops = transport_dev_ops(dev);
+	struct udevice *parent;
+
+	parent = find_scmi_transport_device(dev);
+	if (!parent)
+		return -ENODEV;
+
+	if (transport_dev_ops(parent)->of_get_channel)
+		return transport_dev_ops(parent)->of_get_channel(dev, channel);
+
+	/* Drivers without a get_channel operator don't need a channel ref */
+	*channel = NULL;
+
+	return 0;
+}
+
+int devm_scmi_process_msg(struct udevice *dev, struct scmi_channel *channel,
+			  struct scmi_msg *msg)
+{
+	const struct scmi_agent_ops *ops;
+	struct udevice *parent;
+
+	parent = find_scmi_transport_device(dev);
+	if (!parent)
+		return -ENODEV;
+
+	ops = transport_dev_ops(parent);
 
 	if (ops->process_msg)
-		return ops->process_msg(dev, msg);
+		return ops->process_msg(parent, channel, msg);
 
 	return -EPROTONOSUPPORT;
 }
